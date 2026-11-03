@@ -32,6 +32,12 @@ class Config:
     # notify.mobile_app_* services to ask "who made coffee?" when the camera can't tell.
     notify_services: list[str] = field(default_factory=list)
 
+    # Or ask through withHuman instead: an API key for the coffee-log agent's instance. Each person
+    # gets their own request, so the entry pipeline must route on arguments.person (see README).
+    withhuman_url: str = "https://app.withhuman.ai"
+    withhuman_token: str = ""
+    withhuman_timeout: str = "12h"
+
     # Face matching. 0.363 is OpenCV's recommended cosine threshold for SFace.
     face_threshold: float = 0.363
     snapshot_count: int = 4

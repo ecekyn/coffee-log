@@ -259,6 +259,7 @@ function render() {
   $("status").innerHTML = "";
   $("status").append(pill(st.home_assistant ? "Home Assistant connected" : "Home Assistant not connected", st.home_assistant));
   $("status").append(pill(st.faces ? "Face recognition on" : "Face recognition off", st.faces));
+  if (st.withhuman) $("status").append(pill("Questions go to withHuman", true));
   $("enroll").innerHTML = "";
   for (const person of s.people) {
     const n = (st.references || {})[person] || 0;

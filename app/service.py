@@ -10,6 +10,7 @@ from .detector import Grind, GrindDetector, parse_watts
 from .faces import Faces, Match
 from .ha import HomeAssistant
 from .turns import lead, whose_turn
+from .withhuman import WithHuman
 
 log = logging.getLogger(__name__)
 
@@ -18,11 +19,14 @@ NOT_COFFEE = "X"
 
 
 class CoffeeService:
-    def __init__(self, cfg: Config, log_: db.Log, faces: Faces | None, ha: HomeAssistant | None):
+    def __init__(
+        self, cfg: Config, log_: db.Log, faces: Faces | None, ha: HomeAssistant | None, wh: WithHuman | None = None
+    ):
         self.cfg = cfg
         self.log = log_
         self.faces = faces
         self.ha = ha
+        self.wh = wh
         self.detector = GrindDetector(cfg.power_threshold_w, cfg.window, cfg.tz, timedelta(minutes=cfg.merge_minutes))
         self.round_brew_id: int | None = None
         self._tasks: set[asyncio.Task] = set()
@@ -40,9 +44,12 @@ class CoffeeService:
         grind = self.detector.update(watts, self.now())
         if grind:
             # Looking at the camera takes a few seconds; don't hold up the Home Assistant feed meanwhile.
-            task = asyncio.create_task(self.on_grind(grind))
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+            self._spawn(self.on_grind(grind))
+
+    def _spawn(self, coro) -> None:
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def on_notification_action(self, action: str) -> None:
         if not action.startswith(ACTION_PREFIX):
@@ -101,6 +108,9 @@ class CoffeeService:
         return await asyncio.to_thread(self.faces.identify, frames)
 
     async def ask(self, brew_id: int, match: Match) -> None:
+        if self.wh:
+            await self.ask_withhuman(brew_id, match)
+            return
         if not self.ha or not self.cfg.notify_services:
             return
         actions = [{"action": f"{ACTION_PREFIX}{brew_id}_{i}", "title": p} for i, p in enumerate(self.cfg.people)]
@@ -110,10 +120,55 @@ class CoffeeService:
             await self.ha.notify(service, f"Grinder's going ({match.reason}). Who's making it?", data, "☕ Who made coffee?")
 
     async def clear_question(self, brew_id: int) -> None:
+        if self.wh:
+            for q in self.log.questions(brew_id):
+                if q.answer is None:
+                    self.log.answer_question(q.request_id, "cancelled")
+                    await self.wh.cancel(q.request_id)
         if not self.ha:
             return
         for service in self.cfg.notify_services:
             await self.ha.notify(service, "clear_notification", {"tag": f"coffee-{brew_id}"})
+
+    # --- asking through withHuman ---
+
+    async def ask_withhuman(self, brew_id: int, match: Match) -> None:
+        """One request per person; whoever approves made it. Everyone denying means it wasn't coffee."""
+        brew = self.log.get(brew_id)
+        at = brew.ts.astimezone(self.cfg.tz).strftime("%H:%M")
+        arguments = {"question": f"Did you make the {at} coffee?", "brewed_at": brew.ts.isoformat()}
+        reasoning = (
+            f"The grinder started at {at} and the camera couldn't tell who it was ({match.reason}). "
+            "Approve if you made it, deny if you didn't."
+        )
+        for person in self.cfg.people:
+            request = await self.wh.ask(brew_id, person, arguments, reasoning)
+            if request:
+                self._spawn(self.follow(self.log.add_question(request["id"], brew_id, person)))
+
+    def resume(self) -> None:
+        """After a restart, keep waiting on the questions nobody has answered yet."""
+        if self.wh:
+            for q in self.log.questions():
+                self._spawn(self.follow(q))
+
+    async def follow(self, q: db.Question) -> None:
+        status = await self.wh.wait(q.request_id)
+        brew = self.log.get(q.brew_id)
+        if brew is None or brew.person is not None:
+            return  # sorted out some other way meanwhile
+        self.log.answer_question(q.request_id, status)
+        if status == "approved":
+            if await self.wh.consume(q.request_id):
+                self.log.set_person(brew.id, q.person, db.PHONE)
+                log.info("Brew %d: %s, answered on withHuman", brew.id, q.person)
+                await self.clear_question(brew.id)
+        elif status == "denied":
+            answers = {x.person: x.answer for x in self.log.questions(brew.id)}
+            if all(answers.get(p) == "denied" for p in self.cfg.people):
+                self.log.delete(brew.id)
+                log.info("Brew %d removed: nobody made it (not coffee)", brew.id)
+        # expired or cancelled: it stays pending on the website
 
     # --- for the website ---
 
@@ -137,6 +192,7 @@ class CoffeeService:
             "now": now.isoformat(),
             "status": {
                 "home_assistant": bool(self.ha and self.ha.connected),
+                "withhuman": self.wh is not None,
                 "faces": self.faces is not None,
                 "references": {p: len(self.faces.references.get(p, [])) for p in people} if self.faces else {},
             },

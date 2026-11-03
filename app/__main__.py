@@ -15,6 +15,7 @@ from . import config, db, web as website
 from .faces import DETECTOR_MODEL, Faces
 from .ha import HomeAssistant
 from .service import CoffeeService
+from .withhuman import WithHuman
 
 log = logging.getLogger("coffee")
 
@@ -25,9 +26,11 @@ async def main(cfg: config.Config, demo: bool) -> None:
 
     async with aiohttp.ClientSession() as session:
         ha = None if demo else HomeAssistant(cfg, session)
-        service = CoffeeService(cfg, coffee_log, faces, ha)
+        wh = WithHuman(cfg, session) if cfg.withhuman_token and not demo else None
+        service = CoffeeService(cfg, coffee_log, faces, ha, wh)
         if demo:
             seed(service)
+        service.resume()
 
         runner = web.AppRunner(website.build(service, demo))
         await runner.setup()

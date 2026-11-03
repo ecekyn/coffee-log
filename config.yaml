@@ -1,6 +1,6 @@
 # Home Assistant add-on manifest. Copy this folder to /addons/coffee_log on the HA host.
 name: Coffee Log
-version: "0.1.0"
+version: "0.2.0"
 slug: coffee_log
 description: Ticks the coffee log when the grinder runs, and works out whose turn it is.
 arch:
@@ -29,6 +29,9 @@ options:
   timezone: Europe/London
   merge_minutes: 15
   notify_services: []
+  withhuman_url: https://app.withhuman.ai
+  withhuman_token: ""
+  withhuman_timeout: 12h
   face_threshold: 0.363
   snapshot_count: 4
   snapshot_interval_s: 1.0
@@ -45,6 +48,9 @@ schema:
   merge_minutes: int(1,120)
   notify_services:
     - str
+  withhuman_url: url
+  withhuman_token: password?
+  withhuman_timeout: match(^\d+[smh]$)
   face_threshold: float(0,1)
   snapshot_count: int(1,10)
   snapshot_interval_s: float(0,5)

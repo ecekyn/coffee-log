@@ -1,8 +1,8 @@
 # ☕ Coffee Log
 
 Ends the "whose turn is it?" argument. When the grinder runs in the morning, the kitchen camera
-checks who's standing there and ticks their column. If it can't tell, both phones get a
-"Who made coffee?" notification with a button per person. Whoever has made fewer coffees in total
+checks who's standing there and ticks their column. If it can't tell, it asks on your phones:
+through the Home Assistant app, or through [withHuman](https://withhuman.ai) (see 5). Whoever has made fewer coffees in total
 is up next.
 
 ```
@@ -30,7 +30,8 @@ grinder starts, matched in memory and thrown away (unless you turn on `keep_snap
 2. Add the camera the same way (recent HA versions support Tapo cameras in that integration, using
    the Camera Account from step 1). If yours doesn't, use the **ONVIF** integration on port 2020.
    Note its entity, e.g. `camera.kitchen`.
-3. Install the **Home Assistant Companion app** on both phones and sign in. Each phone shows up as
+3. Unless you'll use withHuman for the questions (section 5): install the **Home Assistant
+   Companion app** on both phones and sign in. Each phone shows up as
    a `notify.mobile_app_<phone_name>` service (Developer tools → Actions to check the names).
 4. Grind a dose and look at the power sensor's history. Idle should be near 0 W and grinding well
    above 20 W. If not, change `power_threshold_w`.
@@ -58,6 +59,31 @@ frames from the kitchen camera match best.
 
 Until then (or whenever it isn't sure) it just asks on your phones, so nothing gets missed.
 
+## 5. Optional: ask through withHuman
+
+Instead of the Companion app, the "who made it?" question can go through withHuman, which
+notifies you on its phone app (or Slack, WhatsApp, email…) and keeps a record of every answer.
+withHuman decisions are approve/deny, so each of you gets **your own** request,
+`claim_coffee` with `arguments.person` set to your name:
+
+- **Approve** = "I made it". You get the tick and the other person's request is withdrawn.
+- **Deny** = "not me". If you both deny, it wasn't coffee and the round is removed.
+- Nobody answers within `withhuman_timeout` (12h) → it stays as a question on the website.
+
+Set it up once in withHuman (both of you must be members of the same organization):
+
+1. **Agents → New agent:** a *service* agent with slug `coffee-log`. On it, add an instance
+   with **Generate an API key**. That key goes into `withhuman_token`.
+2. **Escalation paths:** one called `ece` with only Ece as reviewer, one called `chris` with
+   only Chris.
+3. **Entry pipeline:** at the top, a branch for agent `coffee-log` + tool `claim_coffee` +
+   `arguments.person == "Ece"` → human review on path `ece`; the same for Chris → `chris`.
+   Below them, deny anything else from `coffee-log`, so a misconfigured request can't tick
+   anyone by itself.
+4. Install the withHuman phone app and turn on notifications.
+
+Asking through withHuman replaces the Home Assistant notifications; leave `notify_services` empty.
+
 ## How it decides
 
 - A **coffee round** starts when the grinder goes above `power_threshold_w` between
@@ -65,7 +91,8 @@ Until then (or whenever it isn't sure) it just asks on your phones, so nothing g
   an espresso) count as the same round.
 - It grabs `snapshot_count` frames, one every `snapshot_interval_s`, and looks for known faces.
   Exactly one of you recognised → that's a tick. Both of you, or nobody → it asks on the phones
-  ("Ece / Chris / Not coffee"). Answering on one phone clears the question on the other.
+  ("Ece / Chris / Not coffee", or one approve/deny each on withHuman). Answering clears the
+  question for the other person too.
 - If a later grind in the same round does recognise someone, it fills in the tick and clears the
   question.
 - **Whose turn:** fewest total ticks. On a tie, whoever made one longest ago.
@@ -105,6 +132,9 @@ Tests: `.venv/bin/pip install pytest pytest-asyncio && .venv/bin/pytest`
 | `timezone` | Europe/London | |
 | `merge_minutes` | 15 | Grinds this close together are one round |
 | `notify_services` | none | e.g. `notify.mobile_app_eces_iphone` |
+| `withhuman_token` | none | API key of the `coffee-log` agent's instance; asks through withHuman when set |
+| `withhuman_url` | `https://app.withhuman.ai` | Change for a self-hosted withHuman |
+| `withhuman_timeout` | 12h | How long a question waits for an answer |
 | `face_threshold` | 0.363 | Higher means stricter (fewer wrong ticks, more questions) |
 | `snapshot_count` / `snapshot_interval_s` | 4 / 1.0 | Frames grabbed per grind |
 | `keep_snapshots` | false | Save frames to `/data/snapshots` for debugging |
