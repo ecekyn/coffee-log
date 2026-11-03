@@ -47,6 +47,39 @@ For **Home Assistant OS / Supervised**:
 3. On the **Configuration** tab set `power_sensor`, `camera_entity` and `notify_services`. Start it.
 4. Open it from the sidebar (☕ Coffee Log), or on any phone at `http://<server-ip>:8099`.
 
+For **NixOS** (Home Assistant from `services.home-assistant`, or in a container):
+
+1. Add the module. With flakes, add the input
+   `inputs.coffee-log.url = "github:ecekyn/coffee-log";` and put
+   `inputs.coffee-log.nixosModules.default` in your system's `modules`. Without flakes:
+   ```nix
+   imports = [ "${builtins.fetchTarball "https://github.com/ecekyn/coffee-log/archive/main.tar.gz"}/nix/module.nix" ];
+   ```
+2. Save a long-lived access token (your HA profile → Security) where only root can read it.
+   Paste it, press Enter, then Ctrl-D:
+   ```bash
+   sudo install -D -m 600 /dev/stdin /var/lib/secrets/coffee-log-ha-token
+   ```
+   (agenix or sops-nix work too: point `haTokenFile` at their file.)
+3. Configure it:
+   ```nix
+   services.coffee-log = {
+     enable = true;
+     openFirewall = true;  # port 8099, for the phones
+     haTokenFile = "/var/lib/secrets/coffee-log-ha-token";
+     settings = {
+       ha_url = "http://127.0.0.1:8123";
+       power_sensor = "sensor.grinder_current_consumption";
+       camera_entity = "camera.kitchen";
+       power_threshold_w = 20;
+     };
+   };
+   ```
+   `settings` takes any key from the settings table below. Tokens never go in `settings`, since
+   the Nix store is readable by every user; a withHuman key goes in `withhumanTokenFile`.
+4. `sudo nixos-rebuild switch`, then watch it start with `journalctl -u coffee-log -f`.
+   Data lives in `/var/lib/coffee-log`. Open the scoreboard at `http://<server-ip>:8099`.
+
 For **Home Assistant in a plain container** (no add-on store): copy `config.example.json` to
 `data/config.json`, fill in `ha_url` and a long-lived access token (your HA profile → Security),
 then `docker compose up -d --build`.
@@ -118,7 +151,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 Open http://localhost:8099. It's three weeks of made-up coffees, plus a **Simulate a grind** button
 under Setup.
 
-Tests: `.venv/bin/pip install pytest pytest-asyncio && .venv/bin/pytest`
+Tests: `.venv/bin/pip install pytest pytest-asyncio && .venv/bin/pytest` (or `nix flake check`)
 
 ## Settings
 

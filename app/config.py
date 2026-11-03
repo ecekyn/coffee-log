@@ -99,6 +99,12 @@ def load(path: str | None = None) -> Config:
     if unknown:
         raise ValueError(f"Unknown settings in {path}: {', '.join(sorted(unknown))}")
     cfg = Config(**raw)
+    # Under systemd (the NixOS module) the tokens come as credentials rather than in the file.
+    creds = os.environ.get("CREDENTIALS_DIRECTORY")
+    for name in ("ha_token", "withhuman_token"):
+        secret = Path(creds or "/nonexistent") / name
+        if not getattr(cfg, name) and secret.exists():
+            setattr(cfg, name, secret.read_text().strip())
     if len(cfg.people) != len(set(cfg.people)) or len(cfg.people) < 2:
         raise ValueError("people needs at least two distinct names")
     cfg.window  # fail early on a badly written time

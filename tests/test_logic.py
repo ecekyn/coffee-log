@@ -76,3 +76,14 @@ def test_tie_goes_to_whoever_made_one_longest_ago():
 def test_lead():
     assert lead(PEOPLE, {"Ece": 7, "Chris": 4}) == ("Ece", 3)
     assert lead(PEOPLE, {"Ece": 4, "Chris": 4}) == (None, 0)
+
+
+def test_tokens_from_systemd_credentials(tmp_path, monkeypatch):
+    from app import config
+
+    (tmp_path / "ha_token").write_text("secret-ha\n")
+    settings = tmp_path / "config.json"
+    settings.write_text('{"people": ["Ece", "Chris"]}')
+    monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(tmp_path))
+    cfg = config.load(str(settings))
+    assert cfg.ha_token == "secret-ha" and cfg.withhuman_token == ""
