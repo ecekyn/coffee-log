@@ -1,0 +1,13 @@
+{
+  "people": ["Ece", "Chris"],
+  "ha_url": "http://homeassistant.local:8123",
+  "ha_token": "paste a long-lived access token here",
+  "power_sensor": "sensor.grinder_current_consumption",
+  "power_threshold_w": 20,
+  "camera_entity": "camera.kitchen",
+  "window_start": "06:30",
+  "window_end": "08:00",
+  "timezone": "Europe/London",
+  "merge_minutes": 15,
+  "notify_services": ["notify.mobile_app_eces_iphone", "notify.mobile_app_chriss_phone"]
+}

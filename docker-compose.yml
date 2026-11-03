@@ -1,0 +1,12 @@
+# Only needed if Home Assistant runs as a plain container (no add-on store).
+# With Home Assistant OS / Supervised, install it as an add-on instead (see README).
+services:
+  coffee-log:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8099:8099"
+    environment:
+      COFFEE_CONFIG: /data/config.json
+    volumes:
+      - ./data:/data   # config.json, coffee.db and reference photos live here

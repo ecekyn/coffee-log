@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Coffee Log">
+<meta name="theme-color" content="#f4efe6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1612" media="(prefers-color-scheme: dark)">
+<title>Coffee Log</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4efe6;
+    --card: #fffaf2;
+    --ink: #2b2118;
+    --muted: #7a6a5c;
+    --line: #e3d8c8;
+    --accent: #8a4b2a;
+    --accent-ink: #fffaf2;
+    --soft: #f0e4d4;
+    --warn: #b5651d;
+    --ok: #4f7a4a;
+    --tally: #3a2a1e;
+    --serif: "Fraunces", Georgia, "Times New Roman", serif;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1612;
+      --card: #241d17;
+      --ink: #f1e8dc;
+      --muted: #a8998a;
+      --line: #3a2f26;
+      --accent: #d08a5c;
+      --accent-ink: #1b1612;
+      --soft: #2e251d;
+      --warn: #e0a060;
+      --ok: #8fbf86;
+      --tally: #efe2d0;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.45 var(--sans);
+    padding: max(20px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+  }
+  main { max-width: 640px; margin: 0 auto; display: grid; gap: 16px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; }
+  h1 { font: 700 22px/1 var(--serif); margin: 0; letter-spacing: -0.01em; }
+  .date { color: var(--muted); font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
+  .muted { color: var(--muted); }
+  button {
+    font: 500 14px var(--sans); color: var(--ink); background: var(--soft);
+    border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: .5; cursor: default; }
+
+  /* Up next */
+  .next { text-align: center; padding: 26px 18px 22px; }
+  .next .label { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; color: var(--muted); }
+  .next .who { font: 700 clamp(44px, 14vw, 64px)/1.05 var(--serif); margin: 6px 0 8px; color: var(--accent); }
+  .next .why { color: var(--muted); }
+
+  /* Needs an answer */
+  .pending { border-color: var(--warn); display: grid; gap: 10px; }
+  .pending .q { font-weight: 600; }
+  .row-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* The tally board */
+  .board { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 0; overflow: hidden; }
+  .col { padding: 16px 16px 14px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+  .col + .col { border-left: 1px dashed var(--line); }
+  .col-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .name { font: 600 19px var(--serif); }
+  .count { font: 700 30px/1 var(--serif); font-variant-numeric: tabular-nums; }
+  .tallies { display: flex; flex-wrap: wrap; gap: 6px 10px; min-height: 36px; }
+  .tallies svg { width: 40px; height: 34px; overflow: visible; }
+  .tallies path { stroke: var(--tally); stroke-width: 2.4; stroke-linecap: round; fill: none; }
+  .tallies .empty { color: var(--muted); font-size: 13px; align-self: center; }
+  .col .add { justify-self: start; font-size: 13px; padding: 6px 10px; }
+
+  /* History */
+  h2 { font: 600 16px var(--serif); margin: 0 0 8px; }
+  .log { list-style: none; margin: 0; padding: 0; }
+  .log li { border-top: 1px solid var(--line); }
+  .log li:first-child { border-top: 0; }
+  .entry { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; align-items: center; width: 100%;
+           background: none; border: 0; border-radius: 0; padding: 10px 0; text-align: left; }
+  .entry:hover { border: 0; }
+  .when { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .who-cell { font-weight: 600; }
+  .who-cell.unknown { color: var(--warn); }
+  .src { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .editor { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 0 12px 102px; }
+  @media (max-width: 420px) { .editor { padding-left: 0; } .entry { grid-template-columns: 78px 1fr auto; } }
+
+  /* Setup */
+  details summary { cursor: pointer; font: 600 16px var(--serif); list-style: none; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::after { content: "＋"; float: right; color: var(--muted); }
+  details[open] summary::after { content: "－"; }
+  .setup { display: grid; gap: 14px; margin-top: 14px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); }
+  .pill.ok::before { content: "● "; color: var(--ok); }
+  .pill.bad::before { content: "● "; color: var(--warn); }
+  .enroll { display: grid; gap: 8px; }
+  .enroll .person { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+           background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px;
+           max-width: calc(100% - 32px); opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>☕ Coffee Log</h1>
+    <span class="date" id="date"></span>
+  </header>
+
+  <section class="card next">
+    <div class="label" id="turn-label">Up next</div>
+    <div class="who" id="turn-who">…</div>
+    <div class="why" id="turn-why"></div>
+  </section>
+
+  <div id="pending"></div>
+
+  <section class="card board" id="board"></section>
+
+  <section class="card">
+    <h2>Recent coffees</h2>
+    <ul class="log" id="log"></ul>
+  </section>
+
+  <section class="card">
+    <details id="setup-box">
+      <summary>Setup</summary>
+      <div class="setup">
+        <div class="pills" id="status"></div>
+        <div>
+          <div class="muted" style="margin-bottom:8px">Reference photos let the camera tell you apart. Stand at the grinder and tap <b>Use kitchen camera</b>, 3–5 times each, in morning light. Different angles help.</div>
+          <div class="enroll" id="enroll"></div>
+        </div>
+        <div class="muted" id="window"></div>
+        <div id="demo" class="hidden">
+          <button id="demo-grind">Simulate a grind</button>
+          <span class="muted">Demo mode, nothing real is connected.</span>
+        </div>
+      </div>
+    </details>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+<input type="file" accept="image/*" id="file" class="hidden">
+
+<script>
+const $ = (id) => document.getElementById(id);
+let state = null;
+let openEditor = null;
+
+const SOURCE = { face: "📷 camera", phone: "📱 phone", manual: "✍️ by hand", pending: "❓ who?" };
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(await r.text() || r.statusText);
+  return r.status === 204 ? null : r.json();
+}
+
+async function refresh() {
+  try {
+    state = await api("api/state");
+    render();
+  } catch (e) {
+    toast("Can't reach the coffee log: " + e.message);
+  }
+}
+
+function render() {
+  const s = state;
+  const now = new Date(s.now);
+  $("date").textContent = now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
+
+  // Up next
+  $("turn-label").textContent = s.turn_when === "today" ? "Making coffee today" : "Up next, tomorrow";
+  $("turn-who").textContent = s.turn;
+  const [a, b] = s.people;
+  $("turn-why").textContent = s.lead.person
+    ? `${s.lead.person} is ahead by ${s.lead.by}`
+    : (s.totals[a] === 0 ? "Fresh start, no coffees yet" : "All square, so whoever went longest ago");
+
+  // Waiting for an answer
+  $("pending").innerHTML = "";
+  for (const p of s.pending) {
+    const el = document.createElement("section");
+    el.className = "card pending";
+    el.innerHTML = `<div class="q">The grinder ran ${fmtWhen(p.ts)}. Who made it?</div><div class="row-buttons"></div>`;
+    const btns = el.querySelector(".row-buttons");
+    for (const person of s.people) btns.append(button(person, "primary", () => fix(p.id, person)));
+    btns.append(button("Not coffee", "ghost", () => remove(p.id)));
+    $("pending").append(el);
+  }
+
+  // Tally board
+  $("board").innerHTML = "";
+  for (const person of s.people) {
+    const n = s.totals[person];
+    const col = document.createElement("div");
+    col.className = "col";
+    col.innerHTML = `<div class="col-head"><span class="name"></span><span class="count">${n}</span></div><div class="tallies"></div>`;
+    col.querySelector(".name").textContent = person;
+    col.querySelector(".tallies").innerHTML = n ? tallies(n, person) : `<span class="empty">no ticks yet</span>`;
+    col.append(button(`+ ${person} made one`, "ghost add", () => add(person)));
+    $("board").append(col);
+  }
+
+  // History
+  $("log").innerHTML = "";
+  if (!s.recent.length) $("log").innerHTML = `<li class="muted" style="padding:8px 0">Nothing yet. The first grind between ${s.window.start} and ${s.window.end} will show up here.</li>`;
+  for (const brew of s.recent) {
+    const li = document.createElement("li");
+    const row = document.createElement("button");
+    row.className = "entry";
+    row.innerHTML = `<span class="when">${fmtWhen(brew.ts, true)}</span>
+      <span class="who-cell ${brew.person ? "" : "unknown"}"></span>
+      <span class="src">${SOURCE[brew.source] || brew.source}</span>`;
+    row.querySelector(".who-cell").textContent = brew.person || "Unknown";
+    row.onclick = () => { openEditor = openEditor === brew.id ? null : brew.id; render(); };
+    li.append(row);
+    if (openEditor === brew.id) {
+      const ed = document.createElement("div");
+      ed.className = "editor";
+      for (const person of s.people) {
+        const b = button(person, brew.person === person ? "primary" : "", () => fix(brew.id, person));
+        ed.append(b);
+      }
+      ed.append(button("Delete", "ghost", () => remove(brew.id)));
+      li.append(ed);
+    }
+    $("log").append(li);
+  }
+
+  // Setup
+  const st = s.status;
+  $("status").innerHTML = "";
+  $("status").append(pill(st.home_assistant ? "Home Assistant connected" : "Home Assistant not connected", st.home_assistant));
+  $("status").append(pill(st.faces ? "Face recognition on" : "Face recognition off", st.faces));
+  $("enroll").innerHTML = "";
+  for (const person of s.people) {
+    const n = (st.references || {})[person] || 0;
+    const row = document.createElement("div");
+    row.className = "person";
+    row.innerHTML = `<span><b></b> <span class="muted">· ${n} photo${n === 1 ? "" : "s"}</span></span><span class="row-buttons"></span>`;
+    row.querySelector("b").textContent = person;
+    const btns = row.querySelector(".row-buttons");
+    btns.append(button("Use kitchen camera", "", (e) => enroll(person, null, e.target)));
+    btns.append(button("Upload photo", "ghost", () => pickPhoto(person)));
+    $("enroll").append(row);
+  }
+  $("demo").classList.toggle("hidden", !s.demo);
+  $("window").textContent = `Counting grinds between ${s.window.start} and ${s.window.end}. Grinds within a few minutes of each other count as one coffee.`;
+}
+
+// Hand-drawn-looking tally marks: four strokes and a slash per group of five.
+function tallies(n, seed) {
+  let h = [...seed].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const rnd = () => ((h = (h * 1103515245 + 12345) >>> 0) / 2 ** 32 - 0.5);
+  let out = "";
+  for (let g = 0; g < Math.ceil(n / 5); g++) {
+    const inGroup = Math.min(5, n - g * 5);
+    let d = "";
+    for (let i = 0; i < Math.min(4, inGroup); i++) {
+      const x = 6 + i * 8;
+      d += `M${x + rnd() * 2} ${3 + rnd() * 2} L${x + rnd() * 2} ${31 + rnd() * 2} `;
+    }
+    if (inGroup === 5) d += `M${1 + rnd() * 2} ${26 + rnd() * 3} L${37 + rnd() * 2} ${8 + rnd() * 3}`;
+    out += `<svg viewBox="0 0 40 34" aria-hidden="true"><path d="${d}"/></svg>`;
+  }
+  return out + `<span class="hidden">${n}</span>`;
+}
+
+function fmtWhen(iso, short) {
+  const d = new Date(iso);
+  const today = new Date(state.now);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const same = (x, y) => x.toDateString() === y.toDateString();
+  const relative = same(d, today) ? "Today" : same(d, yesterday) ? "Yesterday" : null;
+  const day = relative || d.toLocaleDateString(undefined,
+    short ? { weekday: "short", day: "numeric" } : { weekday: "long", day: "numeric", month: "short" });
+  if (short) return `${day} ${time}`;
+  return relative ? `${relative.toLowerCase()} at ${time}` : `on ${day} at ${time}`;
+}
+
+function button(text, cls, onclick) {
+  const b = document.createElement("button");
+  b.textContent = text;
+  if (cls) b.className = cls;
+  b.onclick = (e) => { e.stopPropagation(); onclick(e); };
+  return b;
+}
+
+function pill(text, ok) {
+  const p = document.createElement("span");
+  p.className = "pill " + (ok ? "ok" : "bad");
+  p.textContent = text;
+  return p;
+}
+
+async function add(person) {
+  await act(() => api("api/brews", json("POST", { person })), `Ticked ${person}`);
+}
+async function fix(id, person) {
+  openEditor = null;
+  await act(() => api(`api/brews/${id}`, json("PATCH", { person })), `Marked as ${person}`);
+}
+async function remove(id) {
+  openEditor = null;
+  await act(() => api(`api/brews/${id}`, { method: "DELETE" }), "Removed");
+}
+async function act(fn, msg) {
+  try { await fn(); toast(msg); } catch (e) { toast(e.message); }
+  refresh();
+}
+function json(method, body) {
+  return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+}
+
+let uploadFor = null;
+function pickPhoto(person) { uploadFor = person; $("file").value = ""; $("file").click(); }
+$("file").onchange = () => { const f = $("file").files[0]; if (f && uploadFor) enroll(uploadFor, f); };
+
+async function enroll(person, file, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Looking…"; }
+  try {
+    const r = await api(`api/enroll/${encodeURIComponent(person)}`, { method: "POST", body: file || "" });
+    toast(r.message);
+  } catch (e) { toast(e.message); }
+  refresh();
+}
+
+let toastTimer;
+function toast(msg) {
+  $("toast").textContent = msg;
+  $("toast").classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.remove("show"), 3200);
+}
+
+$("demo-grind").onclick = () => act(() => api("api/demo/grind", { method: "POST" }), "Grinder ran");
+
+refresh();
+setInterval(refresh, 20000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+</script>
+</body>
+</html>

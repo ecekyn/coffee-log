@@ -1,0 +1,51 @@
+# Home Assistant add-on manifest. Copy this folder to /addons/coffee_log on the HA host.
+name: Coffee Log
+version: "0.1.0"
+slug: coffee_log
+description: Ticks the coffee log when the grinder runs, and works out whose turn it is.
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+homeassistant_api: true
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:coffee
+panel_title: Coffee Log
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: Scoreboard website (for phones outside the HA app)
+options:
+  people:
+    - Ece
+    - Chris
+  power_sensor: sensor.grinder_current_consumption
+  power_threshold_w: 20
+  camera_entity: camera.kitchen
+  window_start: "06:30"
+  window_end: "08:00"
+  timezone: Europe/London
+  merge_minutes: 15
+  notify_services: []
+  face_threshold: 0.363
+  snapshot_count: 4
+  snapshot_interval_s: 1.0
+  keep_snapshots: false
+schema:
+  people:
+    - str
+  power_sensor: str
+  power_threshold_w: float
+  camera_entity: str
+  window_start: match(^\d{2}:\d{2}$)
+  window_end: match(^\d{2}:\d{2}$)
+  timezone: str
+  merge_minutes: int(1,120)
+  notify_services:
+    - str
+  face_threshold: float(0,1)
+  snapshot_count: int(1,10)
+  snapshot_interval_s: float(0,5)
+  keep_snapshots: bool
