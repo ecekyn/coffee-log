@@ -15,6 +15,8 @@ log = logging.getLogger(__name__)
 STATIC = Path(__file__).parent / "static"
 SERVICE = web.AppKey("service", CoffeeService)
 DEMO = web.AppKey("demo", bool)
+ENROLL_FRAMES = 5
+ENROLL_INTERVAL_S = 1.0
 
 
 def build(service: CoffeeService, demo: bool = False) -> web.Application:
@@ -79,9 +81,11 @@ async def enroll(request: web.Request) -> web.Response:
         if not svc.ha:
             return web.json_response({"ok": False, "message": "Not connected to Home Assistant, so no camera."})
         try:
-            image = await svc.ha.snapshot()
+            # A few seconds of frames, so there's time to lower the phone that tapped the button.
+            frames = await svc.ha.frames(ENROLL_FRAMES, ENROLL_INTERVAL_S)
         except Exception as e:
             return web.json_response({"ok": False, "message": f"Couldn't get a camera frame: {e}"})
+        image = await asyncio.to_thread(svc.faces.clearest, frames)
     ok, message = await asyncio.to_thread(svc.faces.enroll, person, image)
     return web.json_response({"ok": ok, "message": message})
 

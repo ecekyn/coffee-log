@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 
 from app.faces import DETECTOR_MODEL, Faces
@@ -31,6 +33,18 @@ def test_enroll_then_recognise(tmp_path):
     stranger = faces.identify([photo("messi5.jpg")])
     assert stranger.person is None and stranger.faces >= 1
     assert "didn't recognise" in stranger.reason
+
+
+def test_clearest_skips_frames_without_one_face(tmp_path):
+    faces = Faces(MODELS, tmp_path, ["Lena", "Lionel"], 0.363)
+    assert faces.clearest([b"garbage", photo("lena.jpg"), b"garbage"]) == photo("lena.jpg")
+    assert faces.clearest([b"garbage", b"last"]) == b"last"
+
+
+def test_tells_you_what_it_saw(tmp_path):
+    faces = Faces(MODELS, tmp_path, ["Lena", "Lionel"], 0.363)
+    blank = cv2.imencode(".jpg", np.zeros((200, 200, 3), np.uint8))[1].tobytes()
+    assert faces.enroll("Lena", blank) == (False, "Couldn't see a face. Look straight at the camera, with nothing in front of your face.")
 
 
 def test_references_survive_restart(tmp_path):

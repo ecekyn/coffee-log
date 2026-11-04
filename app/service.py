@@ -93,14 +93,11 @@ class CoffeeService:
     async def look(self, brew_id: int) -> Match:
         if not self.faces or not self.ha:
             return Match(None)
-        frames = []
-        for i in range(self.cfg.snapshot_count):
-            if i:
-                await asyncio.sleep(self.cfg.snapshot_interval_s)
-            try:
-                frames.append(await self.ha.snapshot())
-            except Exception as e:
-                log.warning("Couldn't get a camera frame: %s", e)
+        try:
+            frames = await self.ha.frames(self.cfg.snapshot_count, self.cfg.snapshot_interval_s)
+        except Exception as e:
+            log.warning("Couldn't get a camera frame: %s", e)
+            frames = []
         if self.cfg.keep_snapshots:
             self.cfg.snapshots_dir.mkdir(parents=True, exist_ok=True)
             for i, frame in enumerate(frames):

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 
 import aiohttp
@@ -91,11 +92,36 @@ class HomeAssistant:
             r.raise_for_status()
             return (await r.json()).get("state")
 
-    async def snapshot(self) -> bytes:
-        url = f"{self.cfg.api_url}/camera_proxy/{self.cfg.camera_entity}"
-        async with self.session.get(url, headers=self._headers, timeout=aiohttp.ClientTimeout(total=15)) as r:
-            r.raise_for_status()
-            return await r.read()
+    async def frames(self, count: int, interval_s: float) -> list[bytes]:
+        """Live JPEG frames, interval_s apart, from one connection to the camera's stream.
+
+        Not /camera_proxy: TP-Link's integration caches those stills for five minutes, so they
+        show whoever was there earlier. The stream takes a couple of seconds to start.
+        """
+        url = f"{self.cfg.api_url}/camera_proxy_stream/{self.cfg.camera_entity}"
+        timeout = aiohttp.ClientTimeout(total=15 + count * interval_s)
+        frames: list[bytes] = []
+        buffer = b""
+        next_at = 0.0
+        try:
+            async with self.session.get(url, headers=self._headers, timeout=timeout) as r:
+                r.raise_for_status()
+                async for chunk in r.content.iter_any():
+                    buffer += chunk
+                    while (found := _next_jpeg(buffer))[0]:
+                        jpeg, buffer = found
+                        if time.monotonic() >= next_at:
+                            frames.append(jpeg)
+                            next_at = time.monotonic() + interval_s
+                            if len(frames) == count:
+                                return frames
+                    buffer = found[1]
+        except asyncio.TimeoutError:
+            if not frames:
+                raise
+        if not frames:
+            raise ConnectionError("the camera stream ended without a frame")
+        return frames
 
     async def notify(self, service: str, message: str, data: dict | None = None, title: str | None = None) -> None:
         domain, _, name = service.partition(".")
@@ -107,6 +133,17 @@ class HomeAssistant:
         async with self.session.post(f"{self.cfg.api_url}/services/{domain}/{name}", headers=self._headers, json=body) as r:
             if r.status >= 400:
                 log.error("Calling %s failed: %s %s", service, r.status, await r.text())
+
+
+def _next_jpeg(buffer: bytes) -> tuple[bytes | None, bytes]:
+    """The first complete JPEG in buffer, and what's left to keep reading from."""
+    start = buffer.find(b"\xff\xd8")
+    if start < 0:
+        return None, b""
+    end = buffer.find(b"\xff\xd9", start + 2)
+    if end < 0:
+        return None, buffer[start:]
+    return buffer[start:end + 2], buffer[end + 2:]
 
 
 class AuthError(Exception):

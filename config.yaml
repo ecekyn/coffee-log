@@ -1,6 +1,6 @@
 # Home Assistant add-on manifest. Copy this folder to /addons/coffee_log on the HA host.
 name: Coffee Log
-version: "0.2.0"
+version: "0.2.1"
 slug: coffee_log
 description: Ticks the coffee log when the grinder runs, and works out whose turn it is.
 arch:

@@ -23,11 +23,13 @@ class FakeHA:
         self.ws = None
         self.subscribed = asyncio.Event()
         self.notifications: list[tuple[str, dict]] = []
+        self.stream_opens = 0
+        self.stream_frames = 200
         self.app = web.Application()
         self.app.add_routes([
             web.get("/api/websocket", self.websocket),
             web.get("/api/states/{entity}", self.state),
-            web.get("/api/camera_proxy/{entity}", self.camera),
+            web.get("/api/camera_proxy_stream/{entity}", self.camera),
             web.post("/api/services/notify/{name}", self.notify),
         ])
 
@@ -61,7 +63,16 @@ class FakeHA:
         return web.json_response({"state": "0.9"})
 
     async def camera(self, request):
-        return web.Response(body=b"jpeg", content_type="image/jpeg")
+        """Like Home Assistant's MJPEG stream: frames with parts split across chunks, until we hang up."""
+        stream = web.StreamResponse(headers={"Content-Type": "multipart/x-mixed-replace; boundary=ffmpeg"})
+        await stream.prepare(request)
+        self.stream_opens += 1
+        for i in range(self.stream_frames):
+            part = b"--ffmpeg\r\nContent-Type: image/jpeg\r\n\r\n\xff\xd8frame%d\xff\xd9\r\n" % i
+            await stream.write(part[:30])
+            await stream.write(part[30:])
+            await asyncio.sleep(0.01)
+        return stream
 
     async def notify(self, request):
         self.notifications.append((request.match_info["name"], await request.json()))
@@ -173,6 +184,35 @@ async def test_bad_token_does_not_crash(fake_ha, caplog):
         await until(lambda: "refused the token" in caplog.text)
         assert not client.connected
         task.cancel()
+
+
+async def test_frames_come_live_from_one_stream_connection(fake_ha):
+    ha_fake, url = fake_ha
+    config = Config(ha_url=url, ha_token="good")
+    async with aiohttp.ClientSession() as session:
+        client = HomeAssistant(config, session)
+        frames = await client.frames(3, 0)
+        assert frames == [b"\xff\xd8frame0\xff\xd9", b"\xff\xd8frame1\xff\xd9", b"\xff\xd8frame2\xff\xd9"]
+        assert ha_fake.stream_opens == 1
+
+        spaced = await client.frames(2, 0.05)  # frames arrive every 10 ms, so this skips some
+        assert spaced[0] == b"\xff\xd8frame0\xff\xd9" and spaced[1] != b"\xff\xd8frame1\xff\xd9"
+
+        ha_fake.stream_frames = 1
+        assert len(await client.frames(3, 0)) == 1  # the stream ended early: use what we got
+
+        ha_fake.stream_frames = 0
+        with pytest.raises(ConnectionError):
+            await client.frames(1, 0)
+
+
+async def test_camera_failure_still_asks(fake_ha):
+    ha, service, stop = await start(fake_ha, Match(None))
+    ha.stream_frames = 0
+    await ha.power(185)
+    await until(lambda: len(ha.notifications) == 2)
+    assert service.faces.frames_seen == 0
+    await stop()
 
 
 def test_scoreboard_turn_when():

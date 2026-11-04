@@ -153,7 +153,7 @@
       <div class="setup">
         <div class="pills" id="status"></div>
         <div>
-          <div class="muted" style="margin-bottom:8px">Reference photos let the camera tell you apart. Stand at the grinder and tap <b>Use kitchen camera</b>, 3–5 times each, in morning light. Different angles help.</div>
+          <div class="muted" style="margin-bottom:8px">Reference photos let the camera tell you apart. Stand at the grinder, tap <b>Use kitchen camera</b>, then put the phone down and look at the camera for a few seconds. Do it 3–5 times each, in morning light. Different angles help.</div>
           <div class="enroll" id="enroll"></div>
         </div>
         <div class="muted" id="window"></div>
@@ -346,7 +346,7 @@ function pickPhoto(person) { uploadFor = person; $("file").value = ""; $("file")
 $("file").onchange = () => { const f = $("file").files[0]; if (f && uploadFor) enroll(uploadFor, f); };
 
 async function enroll(person, file, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = "Looking…"; }
+  if (btn) { btn.disabled = true; btn.textContent = "Look at the camera…"; }
   try {
     const r = await api(`api/enroll/${encodeURIComponent(person)}`, { method: "POST", body: file || "" });
     toast(r.message);

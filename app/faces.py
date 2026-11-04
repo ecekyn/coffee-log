@@ -69,13 +69,25 @@ class Faces:
         if img is None:
             return False, "That isn't an image I can read."
         found = self._faces(img)
-        if len(found) != 1:
-            return False, f"Need exactly one face in the photo, found {len(found)}."
+        if not found:
+            return False, "Couldn't see a face. Look straight at the camera, with nothing in front of your face."
+        if len(found) > 1:
+            return False, f"Saw {len(found)} faces. One person at a time."
         folder = self.person_dir(person)
         folder.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(folder / f"{int(time.time() * 1000)}.jpg"), img)
         self.references.setdefault(person, []).append(self._feature(img, found[0]))
         return True, f"Saved. {person} now has {len(self.references[person])} reference photo(s)."
+
+    def clearest(self, frames: list[bytes]) -> bytes:
+        """The frame showing one face most clearly, or else the last frame."""
+        best, best_score = frames[-1], -1.0
+        for frame in frames:
+            img = _decode(frame)
+            found = self._faces(img) if img is not None else []
+            if len(found) == 1 and found[0][-1] > best_score:
+                best, best_score = frame, float(found[0][-1])
+        return best
 
     def identify(self, frames: list[bytes]) -> Match:
         seen: dict[str, float] = {}
