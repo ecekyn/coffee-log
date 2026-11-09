@@ -8,7 +8,7 @@ from pathlib import Path
 # Where a tick came from.
 FACE = "face"        # recognised on camera
 PHONE = "phone"      # someone answered the "who made coffee?" notification
-MANUAL = "manual"    # added or corrected on the website
+MANUAL = "manual"    # answered on the website (or, before v0.3, added there by hand)
 PENDING = "pending"  # grinder ran, nobody knows who yet
 
 SCHEMA = """
