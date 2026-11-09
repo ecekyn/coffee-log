@@ -1,4 +1,4 @@
-"""Small Home Assistant client: watch one sensor, hear notification taps, grab camera frames, send notifications."""
+"""Small Home Assistant client: watch one sensor, hear notification taps, grab camera frames, send notifications, speak."""
 
 import asyncio
 import logging
@@ -122,6 +122,15 @@ class HomeAssistant:
         if not frames:
             raise ConnectionError("the camera stream ended without a frame")
         return frames
+
+    async def tts_url(self, engine: str, message: str) -> str:
+        """A URL Home Assistant serves the spoken message from (an MP3, no token needed to fetch it)."""
+        body = {"engine_id": engine, "message": message}
+        async with self.session.post(f"{self.cfg.api_url}/tts_get_url", headers=self._headers, json=body) as r:
+            if r.status >= 400:
+                raise ConnectionError(f"text-to-speech failed: {r.status} {await r.text()}")
+            path = (await r.json())["path"]
+        return self.cfg.ha_url.rstrip("/") + path
 
     async def notify(self, service: str, message: str, data: dict | None = None, title: str | None = None) -> None:
         domain, _, name = service.partition(".")

@@ -44,6 +44,15 @@ class Config:
     snapshot_interval_s: float = 1.0
     keep_snapshots: bool = False
 
+    # Say who got the tick out of the camera's speaker, through go2rtc. The NixOS module's announce
+    # option runs go2rtc and fills in the URL; empty means stay quiet.
+    announce_go2rtc_url: str = ""
+    announce_stream: str = "kitchen_camera"
+    announce_text: str = "{name}"
+    tts_engine: str = "tts.google_translate_en_com"
+    # How to say a name, for when the text-to-speech voice gets it wrong: {"Ece": "Edge-ay"}.
+    spoken_names: dict[str, str] = field(default_factory=dict)
+
     data_dir: str = "/data"
     models_dir: str = "/models"
     port: int = 8099

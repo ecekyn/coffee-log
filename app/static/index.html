@@ -73,9 +73,6 @@
   .next .who { font: 700 clamp(44px, 14vw, 64px)/1.05 var(--serif); margin: 6px 0 8px; color: var(--accent); }
   .next .why { color: var(--muted); }
 
-  /* Needs an answer */
-  .pending { border-color: var(--warn); display: grid; gap: 10px; }
-  .pending .q { font-weight: 600; }
   .row-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 
   /* The tally board */
@@ -89,22 +86,21 @@
   .tallies svg { width: 40px; height: 34px; overflow: visible; }
   .tallies path { stroke: var(--tally); stroke-width: 2.4; stroke-linecap: round; fill: none; }
   .tallies .empty { color: var(--muted); font-size: 13px; align-self: center; }
-  .col .add { justify-self: start; font-size: 13px; padding: 6px 10px; }
 
   /* History */
   h2 { font: 600 16px var(--serif); margin: 0 0 8px; }
   .log { list-style: none; margin: 0; padding: 0; }
   .log li { border-top: 1px solid var(--line); }
   .log li:first-child { border-top: 0; }
-  .entry { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; align-items: center; width: 100%;
-           background: none; border: 0; border-radius: 0; padding: 10px 0; text-align: left; }
-  .entry:hover { border: 0; }
+  .entry { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; }
   .when { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .who-cell { font-weight: 600; }
   .who-cell.unknown { color: var(--warn); }
   .src { color: var(--muted); font-size: 12px; white-space: nowrap; }
-  .editor { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 0 12px 102px; }
-  @media (max-width: 420px) { .editor { padding-left: 0; } .entry { grid-template-columns: 78px 1fr auto; } }
+  .log li.ask { background: var(--soft); margin: 0 -18px; padding: 0 18px; border-top-color: var(--warn); }
+  .log li.ask + li { border-top-color: var(--warn); }
+  .answer { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 0 12px 102px; }
+  @media (max-width: 420px) { .answer { padding-left: 0; } .entry { grid-template-columns: 78px 1fr auto; } }
 
   /* Setup */
   details summary { cursor: pointer; font: 600 16px var(--serif); list-style: none; }
@@ -138,8 +134,6 @@
     <div class="why" id="turn-why"></div>
   </section>
 
-  <div id="pending"></div>
-
   <section class="card board" id="board"></section>
 
   <section class="card">
@@ -171,9 +165,8 @@
 <script>
 const $ = (id) => document.getElementById(id);
 let state = null;
-let openEditor = null;
 
-const SOURCE = { face: "📷 camera", phone: "📱 phone", manual: "✍️ by hand", pending: "❓ who?" };
+const SOURCE = { face: "📷 camera", phone: "📱 phone", manual: "✍️ answered here", pending: "❓ who?" };
 
 async function api(path, opts = {}) {
   const r = await fetch(path, opts);
@@ -203,18 +196,6 @@ function render() {
     ? `${s.lead.person} is ahead by ${s.lead.by}`
     : (s.totals[a] === 0 ? "Fresh start, no coffees yet" : "All square, so whoever went longest ago");
 
-  // Waiting for an answer
-  $("pending").innerHTML = "";
-  for (const p of s.pending) {
-    const el = document.createElement("section");
-    el.className = "card pending";
-    el.innerHTML = `<div class="q">The grinder ran ${fmtWhen(p.ts)}. Who made it?</div><div class="row-buttons"></div>`;
-    const btns = el.querySelector(".row-buttons");
-    for (const person of s.people) btns.append(button(person, "primary", () => fix(p.id, person)));
-    btns.append(button("Not coffee", "ghost", () => remove(p.id)));
-    $("pending").append(el);
-  }
-
   // Tally board
   $("board").innerHTML = "";
   for (const person of s.people) {
@@ -224,32 +205,28 @@ function render() {
     col.innerHTML = `<div class="col-head"><span class="name"></span><span class="count">${n}</span></div><div class="tallies"></div>`;
     col.querySelector(".name").textContent = person;
     col.querySelector(".tallies").innerHTML = n ? tallies(n, person) : `<span class="empty">no ticks yet</span>`;
-    col.append(button(`+ ${person} made one`, "ghost add", () => add(person)));
     $("board").append(col);
   }
 
-  // History
+  // History. Only the camera ticks; when it couldn't tell who it was, the coffee asks here.
   $("log").innerHTML = "";
   if (!s.recent.length) $("log").innerHTML = `<li class="muted" style="padding:8px 0">Nothing yet. The first grind between ${s.window.start} and ${s.window.end} will show up here.</li>`;
   for (const brew of s.recent) {
     const li = document.createElement("li");
-    const row = document.createElement("button");
+    const row = document.createElement("div");
     row.className = "entry";
     row.innerHTML = `<span class="when">${fmtWhen(brew.ts, true)}</span>
       <span class="who-cell ${brew.person ? "" : "unknown"}"></span>
       <span class="src">${SOURCE[brew.source] || brew.source}</span>`;
-    row.querySelector(".who-cell").textContent = brew.person || "Unknown";
-    row.onclick = () => { openEditor = openEditor === brew.id ? null : brew.id; render(); };
+    row.querySelector(".who-cell").textContent = brew.person || "Who made it?";
     li.append(row);
-    if (openEditor === brew.id) {
-      const ed = document.createElement("div");
-      ed.className = "editor";
-      for (const person of s.people) {
-        const b = button(person, brew.person === person ? "primary" : "", () => fix(brew.id, person));
-        ed.append(b);
-      }
-      ed.append(button("Delete", "ghost", () => remove(brew.id)));
-      li.append(ed);
+    if (!brew.person) {
+      li.className = "ask";
+      const answer = document.createElement("div");
+      answer.className = "answer";
+      for (const person of s.people) answer.append(button(person, "primary", () => fix(brew.id, person)));
+      answer.append(button("Not coffee", "ghost", () => remove(brew.id)));
+      li.append(answer);
     }
     $("log").append(li);
   }
@@ -322,15 +299,10 @@ function pill(text, ok) {
   return p;
 }
 
-async function add(person) {
-  await act(() => api("api/brews", json("POST", { person })), `Ticked ${person}`);
-}
 async function fix(id, person) {
-  openEditor = null;
-  await act(() => api(`api/brews/${id}`, json("PATCH", { person })), `Marked as ${person}`);
+  await act(() => api(`api/brews/${id}`, json("PATCH", { person })), `Ticked ${person}`);
 }
 async function remove(id) {
-  openEditor = null;
   await act(() => api(`api/brews/${id}`, { method: "DELETE" }), "Removed");
 }
 async function act(fn, msg) {

@@ -26,7 +26,6 @@ def build(service: CoffeeService, demo: bool = False) -> web.Application:
     app.add_routes([
         web.get("/", index),
         web.get("/api/state", state),
-        web.post("/api/brews", add_brew),
         web.patch("/api/brews/{id}", fix_brew),
         web.delete("/api/brews/{id}", delete_brew),
         web.post("/api/enroll/{person}", enroll),
@@ -44,28 +43,24 @@ async def state(request: web.Request) -> web.Response:
     return web.json_response(request.app[SERVICE].scoreboard() | {"demo": request.app[DEMO]})
 
 
-async def add_brew(request: web.Request) -> web.Response:
-    svc = request.app[SERVICE]
-    person = _person(svc, (await request.json()).get("person"))
-    brew = svc.log.add(svc.now(), person, db.MANUAL)
-    return web.json_response(brew.as_json(), status=201)
+# Ticks come from the camera. The website can only answer for a coffee the camera couldn't place.
 
 
 async def fix_brew(request: web.Request) -> web.Response:
+    """Answer "who made it?" for a coffee the camera couldn't place."""
     svc = request.app[SERVICE]
-    brew_id = int(request.match_info["id"])
+    brew_id = _unanswered(svc, request)
     person = _person(svc, (await request.json()).get("person"))
-    if not svc.log.set_person(brew_id, person, db.MANUAL):
-        raise web.HTTPNotFound(text="No such brew")
+    svc.log.set_person(brew_id, person, db.MANUAL)
     await svc.clear_question(brew_id)
     return web.json_response(svc.log.get(brew_id).as_json())
 
 
 async def delete_brew(request: web.Request) -> web.Response:
+    """Not coffee: drop a grind the camera couldn't place."""
     svc = request.app[SERVICE]
-    brew_id = int(request.match_info["id"])
-    if not svc.log.delete(brew_id):
-        raise web.HTTPNotFound(text="No such brew")
+    brew_id = _unanswered(svc, request)
+    svc.log.delete(brew_id)
     await svc.clear_question(brew_id)
     return web.Response(status=204)
 
@@ -94,6 +89,15 @@ async def demo_grind(request: web.Request) -> web.Response:
     svc = request.app[SERVICE]
     await svc.on_grind(Grind(svc.now(), new_round=True))
     return web.Response(status=204)
+
+
+def _unanswered(svc: CoffeeService, request: web.Request) -> int:
+    brew = svc.log.get(int(request.match_info["id"]))
+    if brew is None:
+        raise web.HTTPNotFound(text="No such brew")
+    if brew.person is not None:
+        raise web.HTTPConflict(text="The camera already ticked this one")
+    return brew.id
 
 
 def _person(svc: CoffeeService, person) -> str:

@@ -12,6 +12,7 @@ import aiohttp
 from aiohttp import web
 
 from . import config, db, web as website
+from .announce import Announcer
 from .faces import DETECTOR_MODEL, Faces
 from .ha import HomeAssistant
 from .service import CoffeeService
@@ -27,7 +28,8 @@ async def main(cfg: config.Config, demo: bool) -> None:
     async with aiohttp.ClientSession() as session:
         ha = None if demo else HomeAssistant(cfg, session)
         wh = WithHuman(cfg, session) if cfg.withhuman_token and not demo else None
-        service = CoffeeService(cfg, coffee_log, faces, ha, wh)
+        announcer = Announcer(cfg, session, ha) if ha and cfg.announce_go2rtc_url else None
+        service = CoffeeService(cfg, coffee_log, faces, ha, wh, announcer)
         if demo:
             seed(service)
         service.resume()

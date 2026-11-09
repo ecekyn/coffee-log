@@ -129,8 +129,32 @@ Asking through withHuman replaces the Home Assistant notifications; leave `notif
 - If a later grind in the same round does recognise someone, it fills in the tick and clears the
   question.
 - **Whose turn:** fewest total ticks. On a tie, whoever made one longest ago.
-- Anything can be fixed on the website: tap a row to reassign or delete it, or use
-  "+ Ece made one" for coffee made outside the window.
+- **Only the camera ticks.** There's no adding or reassigning by hand. When the camera can't tell
+  (or can't be reached), the coffee waits in the website's Recent coffees list with
+  "Ece / Chris / Not coffee" buttons, and once answered it's settled.
+- With announcing on, the camera says the name out loud after it ticks (see below).
+
+## Optional: say who got the tick (Tapo cameras)
+
+The NixOS module can play the name through a Tapo camera's speaker. It runs a private
+[go2rtc](https://github.com/AlexxIT/go2rtc) for the camera's two-way audio, and Home Assistant's
+text-to-speech makes the words:
+
+```nix
+services.coffee-log = {
+  settings.spoken_names.Ece = "Edge-ay";  # spell names the way they're said
+  announce = {
+    enable = true;
+    cameraAddress = "192.168.1.50";
+    tapoPasswordFile = "/var/lib/secrets/coffee-log-tapo-password";
+  };
+};
+```
+
+The password is your TP-Link cloud account's (the Tapo app's), not the camera account's: the
+camera's two-way audio only takes that one. Put it in a root-only file outside the Nix store.
+Tapo two-way audio can break with camera firmware updates; if it does, ticks still work, and the
+log says `Couldn't announce`.
 
 ## Getting to the website away from home
 
@@ -171,6 +195,10 @@ Tests: `.venv/bin/pip install pytest pytest-asyncio && .venv/bin/pytest` (or `ni
 | `face_threshold` | 0.363 | Higher means stricter (fewer wrong ticks, more questions) |
 | `snapshot_count` / `snapshot_interval_s` | 4 / 1.0 | Frames grabbed per grind |
 | `keep_snapshots` | false | Save frames to `/data/snapshots` for debugging |
+| `spoken_names` | none | How to say a name out loud, e.g. `{"Ece": "Edge-ay"}` |
+| `announce_text` | `{name}` | What the camera says after a tick |
+| `tts_engine` | `tts.google_translate_en_com` | Home Assistant text-to-speech entity |
+| `announce_go2rtc_url` / `announce_stream` | none / `kitchen_camera` | Set by the NixOS module's `announce` |
 
 ## Known limits
 

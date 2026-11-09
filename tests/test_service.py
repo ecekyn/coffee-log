@@ -25,12 +25,14 @@ class FakeHA:
         self.notifications: list[tuple[str, dict]] = []
         self.stream_opens = 0
         self.stream_frames = 200
+        self.spoken: list[tuple[str, str]] = []
         self.app = web.Application()
         self.app.add_routes([
             web.get("/api/websocket", self.websocket),
             web.get("/api/states/{entity}", self.state),
             web.get("/api/camera_proxy_stream/{entity}", self.camera),
             web.post("/api/services/notify/{name}", self.notify),
+            web.post("/api/tts_get_url", self.tts),
         ])
 
     async def websocket(self, request):
@@ -77,6 +79,11 @@ class FakeHA:
     async def notify(self, request):
         self.notifications.append((request.match_info["name"], await request.json()))
         return web.json_response([])
+
+    async def tts(self, request):
+        body = await request.json()
+        self.spoken.append((body["engine_id"], body["message"]))
+        return web.json_response({"url": "http://elsewhere:8123/api/tts_proxy/said.mp3", "path": "/api/tts_proxy/said.mp3"})
 
 
 class FakeFaces:
@@ -224,3 +231,69 @@ def test_scoreboard_turn_when():
     service.log.add(datetime(2026, 11, 3, 6, 45, tzinfo=tz), "Ece", db.FACE)
     board = service.scoreboard()
     assert board["turn_when"] == "tomorrow" and board["turn"] == "Chris"
+
+
+class FakeGo2rtc:
+    def __init__(self, status=200):
+        self.played: list[dict] = []
+        self.status = status
+        self.app = web.Application()
+        self.app.add_routes([web.post("/api/streams", self.streams)])
+
+    async def streams(self, request):
+        self.played.append(dict(request.query))
+        return web.Response(status=self.status)
+
+
+async def start_announcing(fake_ha, match, go2rtc_status=200):
+    from app.announce import Announcer
+
+    go2rtc = FakeGo2rtc(go2rtc_status)
+    server = TestServer(go2rtc.app)
+    await server.start_server()
+    ha, service, stop = await start(
+        fake_ha, match, announce_go2rtc_url=f"http://{server.host}:{server.port}", spoken_names={"Ece": "Edge-ay"}
+    )
+    service.announcer = Announcer(service.cfg, service.ha.session, service.ha)
+
+    async def stop_all():
+        await stop()
+        await server.close()
+    return ha, service, go2rtc, stop_all
+
+
+async def test_camera_tick_is_announced(fake_ha):
+    ha, service, go2rtc, stop = await start_announcing(fake_ha, Match("Ece", 0.6, {"Ece": 0.6}, 1))
+    await ha.power(185)
+    await until(lambda: go2rtc.played)
+    assert ha.spoken == [("tts.google_translate_en_com", "Edge-ay")]  # said the way it's pronounced
+    play = go2rtc.played[0]
+    assert play["dst"] == "kitchen_camera"
+    assert play["src"] == f"ffmpeg:{service.cfg.ha_url}/api/tts_proxy/said.mp3#audio=pcma#input=file"
+    assert service.log.totals() == {"Ece": 1}
+    await stop()
+
+
+async def test_names_without_a_spelling_are_said_as_written(fake_ha):
+    ha, service, go2rtc, stop = await start_announcing(fake_ha, Match("Chris", 0.6, {"Chris": 0.6}, 1))
+    await ha.power(185)
+    await until(lambda: go2rtc.played)
+    assert ha.spoken == [("tts.google_translate_en_com", "Chris")]
+    await stop()
+
+
+async def test_no_announcement_when_the_camera_cannot_tell(fake_ha):
+    ha, service, go2rtc, stop = await start_announcing(fake_ha, Match(None, faces=0))
+    await ha.power(185)
+    await until(lambda: len(ha.notifications) == 2)  # asked instead
+    await asyncio.sleep(0.1)
+    assert go2rtc.played == [] and ha.spoken == []
+    await stop()
+
+
+async def test_a_quiet_camera_still_gets_the_tick(fake_ha, caplog):
+    ha, service, go2rtc, stop = await start_announcing(fake_ha, Match("Ece", 0.6, {"Ece": 0.6}, 1), go2rtc_status=500)
+    await ha.power(185)
+    await until(lambda: "Couldn't announce Ece" in caplog.text)
+    assert service.log.totals() == {"Ece": 1}
+    await stop()

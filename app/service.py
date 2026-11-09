@@ -1,8 +1,9 @@
-"""Ties it together: grinder starts -> look at the camera -> tick the log, or ask on the phones."""
+"""Ties it together: grinder starts -> look at the camera -> tick the log and say who, or ask."""
 
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from . import db
 from .config import Config
@@ -12,6 +13,9 @@ from .ha import HomeAssistant
 from .turns import lead, whose_turn
 from .withhuman import WithHuman
 
+if TYPE_CHECKING:
+    from .announce import Announcer
+
 log = logging.getLogger(__name__)
 
 ACTION_PREFIX = "COFFEE_"
@@ -20,13 +24,20 @@ NOT_COFFEE = "X"
 
 class CoffeeService:
     def __init__(
-        self, cfg: Config, log_: db.Log, faces: Faces | None, ha: HomeAssistant | None, wh: WithHuman | None = None
+        self,
+        cfg: Config,
+        log_: db.Log,
+        faces: Faces | None,
+        ha: HomeAssistant | None,
+        wh: WithHuman | None = None,
+        announcer: "Announcer | None" = None,
     ):
         self.cfg = cfg
         self.log = log_
         self.faces = faces
         self.ha = ha
         self.wh = wh
+        self.announcer = announcer
         self.detector = GrindDetector(cfg.power_threshold_w, cfg.window, cfg.tz, timedelta(minutes=cfg.merge_minutes))
         self.round_brew_id: int | None = None
         self._tasks: set[asyncio.Task] = set()
@@ -85,6 +96,8 @@ class CoffeeService:
         log.info("Round #%d: %s", brew.id, match.reason)
         if match.person:
             self.log.set_person(brew.id, match.person, db.FACE, match.score)
+            if self.announcer:
+                self._spawn(self.announcer.say(match.person))
             if not grind.new_round:
                 await self.clear_question(brew.id)  # we asked after the first grind
         elif grind.new_round:
